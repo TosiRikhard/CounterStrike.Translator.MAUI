@@ -1,0 +1,1 @@
+# CounterStrike.Translator.MAUI
