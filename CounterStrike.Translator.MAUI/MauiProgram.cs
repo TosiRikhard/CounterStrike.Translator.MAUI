@@ -1,6 +1,6 @@
 ﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
-using CounterStrike.Translator.MAUI.Data;
+using CounterStrike.Translator.MAUI.Services;
 using Microsoft.Extensions.Configuration;
 
 namespace CounterStrike.Translator.MAUI;
@@ -18,6 +18,16 @@ public static class MauiProgram
             .Build();
         builder.Configuration.AddConfiguration(config);
 
+        // Load userSettings.json if it exists
+        var userSettingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "userSettings.json");
+        if (File.Exists(userSettingsPath))
+        {
+            var userConfig = new ConfigurationBuilder()
+                .AddJsonFile(userSettingsPath)
+                .Build();
+            builder.Configuration.AddConfiguration(userConfig);
+        }
+
         builder
 			.UseMauiApp<App>()
 			.ConfigureFonts(fonts =>
@@ -32,9 +42,12 @@ public static class MauiProgram
 		builder.Logging.AddDebug();
 #endif
 
-		builder.Services.AddSingleton<WeatherForecastService>();
-        //builder.Services.AddTransient<MainPage>();
+		builder.Services.AddSingleton<AppSettingsAndStateService>();
+        builder.Services.AddSingleton<SteamUserService>();
+        builder.Services.AddSingleton<TelnetConnection>();
+        builder.Services.AddSingleton<TelnetService>();
+
 
         return builder.Build();
-	}
+    }
 }

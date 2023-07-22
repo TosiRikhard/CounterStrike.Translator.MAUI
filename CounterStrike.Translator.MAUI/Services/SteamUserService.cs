@@ -11,9 +11,16 @@ public class SteamUserService
 {
 
     private static readonly HttpClient HttpClient = new();
+    public List<SteamUser> SteamUsers;
 
     public SteamUserService()
     {
+        InitializeSteamUsers();
+    }
+
+    private async Task InitializeSteamUsers()
+    {
+        SteamUsers = await GetSteamUsers();
     }
 
     public async Task<List<SteamUser>> GetSteamUsers()
@@ -113,13 +120,14 @@ public class SteamUserService
                 SteamId64 = steamId64,
                 ProfileUrl = $"https://steamcommunity.com/profiles/{steamId64}",
                 CurrentLaunchOptions = currentLaunchOptions,
-                TranslatingEnabled = currentLaunchOptions.Contains("-netconport 2121")
+                TranslatingEnabled = currentLaunchOptions.Contains("-netconport 2121"),
+                LocalConfigPath = localConfigPath
             };
 
             // Create a new task to get the avatar and name for this steam user
             tasks.Add(Task.Run(async () =>
             {
-                var (avatarUrl, name) = await GetAvatarAndNameAsync($"https://steamcommunity.com/profiles/{steamId64}");
+                var (avatarUrl, frameUrl, name) = await GetAvatarFrameAndNameAsync($"https://steamcommunity.com/profiles/{steamId64}");
 
                 // Add a delay before making the next request
                // await Task.Delay(TimeSpan.FromSeconds(1)); // 1 second delay
@@ -127,8 +135,8 @@ public class SteamUserService
                 // Get avatar as memory stream
                 try
                 {
-                    var avatarData = await HttpClient.GetByteArrayAsync(avatarUrl);
-                    var avatarMemoryStream = new MemoryStream(avatarData);
+                    steamUser.AvatarUrl = avatarUrl;
+                    steamUser.AvatarFrameUrl = frameUrl;
                     steamUser.ProfileName = name;
                     steamUsersWithCounterStrike.Add(steamUser);
                 }
@@ -142,10 +150,11 @@ public class SteamUserService
         // Wait for all the tasks to complete
         await Task.WhenAll(tasks);
 
+
         return steamUsersWithCounterStrike.ToList();
     }
 
-    public async Task<(string, string)> GetAvatarAndNameAsync(string url)
+    public async Task<(string, string, string)> GetAvatarFrameAndNameAsync(string url)
     {
         try
         {
@@ -157,13 +166,15 @@ public class SteamUserService
 
             // Find the avatar image, avatar frame image, and user's name in one pass
             var avatarNode = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'playerAvatarAutoSizeInner')]/img[last()]");
+            var avatarFrameNode = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'profile_avatar_frame')]/img");
             var userNameNode = doc.DocumentNode.SelectSingleNode("//span[contains(@class, 'actual_persona_name')]");
 
             // Using null coalescing to simplify the code
             var avatarUrl = avatarNode?.GetAttributeValue("src", string.Empty) ?? string.Empty;
+            var avatarFrameUrl = avatarFrameNode?.GetAttributeValue("src", string.Empty) ?? string.Empty;
             var userName = userNameNode?.InnerText ?? string.Empty;
 
-            return (avatarUrl, userName);
+            return (avatarUrl, avatarFrameUrl, userName);
         }
         catch (Exception ex)
         {
@@ -222,54 +233,9 @@ public class SteamUserService
         return null;
     }
 
-    public void SetLaunchOptions(string vdfPath, string appId, string newOptions)
+    public async Task RefreshSteamUsers()
     {
-        string tempFile = Path.GetTempFileName();
-        using var lineIterator = File.ReadLines(vdfPath).GetEnumerator();
-        using var writer = new StreamWriter(tempFile);
-
-        string? line;
-        while ((line = GetNextLineContaining(lineIterator, "\"apps\"")) != null)
-        {
-            writer.WriteLine(line);
-
-            if ((line = GetNextLineContaining(lineIterator, appId)) != null)
-            {
-                writer.WriteLine(line);
-
-                line = GetNextLineContaining(lineIterator, "\"LaunchOptions\"");
-                if (line != null)
-                {
-                    // Replace the line with the launch options
-                    writer.WriteLine($"\"LaunchOptions\" \"{newOptions}\"");
-                    // Skip the original launch options line
-                    continue;
-                }
-                else
-                {
-                    // App block exists, but no LaunchOptions. Add one.
-                    writer.WriteLine($"\"LaunchOptions\" \"{newOptions}\"");
-                    line = lineIterator.Current; // make sure to write the line that was read but not matched
-                }
-            }
-
-            writer.WriteLine(line);
-        }
-
-        // Write the rest of the file
-        while (lineIterator.MoveNext())
-        {
-            writer.WriteLine(lineIterator.Current);
-        }
-
-        writer.Close();
-        File.Delete(vdfPath);
-        File.Move(tempFile, vdfPath);
-    }
-
-
-    public async Task UpdateSteamUserLaunchOptions(SteamUser steamUser)
-    {
-        throw new NotImplementedException();
+        SteamUsers = null;
+        SteamUsers = await GetSteamUsers();
     }
 }

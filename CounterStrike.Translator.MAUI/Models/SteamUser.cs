@@ -11,4 +11,5 @@ public class SteamUser
     public string AvatarUrl { get; set; }
     public bool TranslatingEnabled { get; set; }
     public string CurrentLaunchOptions { get; set; } = string.Empty;
+    public string LocalConfigPath { get; set; } = string.Empty;
 }

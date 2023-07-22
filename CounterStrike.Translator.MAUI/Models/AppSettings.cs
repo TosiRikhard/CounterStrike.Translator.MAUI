@@ -6,8 +6,5 @@ namespace CounterStrike.Translator.MAUI.Models
     {
         public bool IsFirstRun { get; set; }
         public bool ShowUserConfiguratorAtStartup { get; set; }
-
-        [JsonIgnore]
-        public (bool, string) ApplicationIsWorking { get; set; } = (false, string.Empty);
     }
 }

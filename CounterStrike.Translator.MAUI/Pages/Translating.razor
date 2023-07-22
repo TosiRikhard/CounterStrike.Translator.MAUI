@@ -1,24 +1,59 @@
 ﻿@page "/"
 @using Microsoft.Extensions.Configuration
 @using CounterStrike.Translator.MAUI.Models
-@inject IConfiguration configuration
+@using CounterStrike.Translator.MAUI.Services
+@inject IConfiguration Configuration
+@inject AppSettingsAndStateService AppSettingsAndStateService
+@inject NavigationManager NavigationManager
+@inject TelnetService TelnetService
 
 <h1>Hello, world!</h1>
 
 Welcome to your new app.
-
-<SurveyPrompt Title="How is Blazor working for you?" />
-
-<button class="btn btn-primary" @onclick="Test">Click me</button>
-
+<p>@_lastMessage</p>
+<button class="btn btn-primary" @onclick="SendCommand">Send</button>
 
 
 @code {
 
+    private string _lastMessage = "";
 
-    private void Test()
+    protected override async Task OnInitializedAsync()
     {
-        var settings = configuration.GetRequiredSection("AppSettings").Get<AppSettings>();
+        var appSettings = AppSettingsAndStateService.GetSettings();
+
+        if (appSettings.IsFirstRun || appSettings.ShowUserConfiguratorAtStartup && !AppSettingsAndStateService.UserConfiguratorShown)
+        {
+    // Update first run flag to false
+            await SaveFirstRun(appSettings);
+
+    // Navigate to SteamProfiles page
+            NavigationManager.NavigateTo("/steamprofiles");
+        }
+
+        TelnetService.TelnetConnection.MessageReceived += OnMessageReceived;
+
+    }
+
+    private void OnMessageReceived(string message)
+    {
+        if(message == string.Empty)
+        {
+            return;
+        }
+        _lastMessage = message;
+        InvokeAsync(StateHasChanged);  // Update the UI on the main thread
+    }
+
+    private async Task SaveFirstRun(AppSettings settings)
+    {
+        settings.IsFirstRun = false;
+        AppSettingsAndStateService.UserConfiguratorShown = true;
+        await AppSettingsAndStateService.SaveSettings(settings);
+    }
+
+    private async Task SendCommand()
+    {
+        await TelnetService.SendInChat(TelnetService.ChatType.All, "TÄMÄ OLISI KÄÄNNETTY");
     }
 }
-
