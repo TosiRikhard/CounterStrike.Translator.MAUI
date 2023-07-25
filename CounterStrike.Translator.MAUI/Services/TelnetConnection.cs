@@ -32,7 +32,8 @@ public class TelnetConnection
     {
         if (!Connected)
         {
-            await Application.Current!.MainPage!.DisplayAlert("Error", "Telnet not connected. Check Launch options for -netconport 2121", "Ok");
+            await Application.Current!.MainPage!.DisplayAlert("Error",
+                "Telnet not connected. Check Launch options for -netconport 2121", "Ok");
             return;
         }
 
@@ -119,6 +120,7 @@ public class TelnetConnection
                 break;
         }
     }
+
     // Method to read a single byte from the socket.
     private int ReadFromSocket()
     {
@@ -186,3 +188,4 @@ public class TelnetConnection
     {
         Sga = 3
     }
+}
