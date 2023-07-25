@@ -1,6 +1,8 @@
 ﻿using System.Net.Sockets;
 using System.Text;
 
+namespace CounterStrike.Translator.MAUI.Services;
+
 public class TelnetConnection
 {
     private const string _hostname = "localhost";
@@ -41,10 +43,15 @@ public class TelnetConnection
         // Convert the command to bytes and escape any IAC characters.
         var buf = utf8.GetBytes((command + "\n").Replace("\0xFF", "\0xFF\0xFF"));
 
-        _tcpSocket.GetStream().Write(buf, 0, buf.Length);
+        try
+        {
+            _tcpSocket.GetStream().Write(buf, 0, buf.Length);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
 
-        // Adding a delay to ensure the command is sent before attempting to read the response.
-        await Task.Delay(200);
     }
 
     // Asynchronous method to continuously read messages from the server.
@@ -54,9 +61,12 @@ public class TelnetConnection
         {
             var message = await ReadTelnetAsync();
             // Invoke the event to notify subscribers of the received message.
+            await Task.Delay(200);
+
+            if (string.IsNullOrWhiteSpace(message)) continue;
+
             MessageReceived?.Invoke(message);
             // Adding a delay to prevent tight loop and high CPU usage.
-            await Task.Delay(200);
         }
     }
 

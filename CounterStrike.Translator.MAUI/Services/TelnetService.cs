@@ -9,6 +9,8 @@ public class TelnetService
 
     public readonly TelnetConnection TelnetConnection;
 
+    private readonly SemaphoreSlim _sendChatSemaphore = new SemaphoreSlim(1, 1);
+
     public bool Connected => TelnetConnection.Connected;
 
     public TelnetService(TelnetConnection telnetConnection)
@@ -28,11 +30,21 @@ public class TelnetService
 
     public async Task<bool> SendInChat(ChatType chatType, string message)
     {
-        return chatType switch
+        await _sendChatSemaphore.WaitAsync();
+
+        try
         {
-            ChatType.All => await ExecuteCsgoCommand($"say {message}"),
-            ChatType.Team => await ExecuteCsgoCommand($"say_team {message}"),
-            _ => false,
-        };
+            await Task.Delay(1000);
+            return chatType switch
+            {
+                ChatType.All => await ExecuteCsgoCommand($"say {message}"),
+                ChatType.Team => await ExecuteCsgoCommand($"say_team {message}"),
+                _ => false,
+            };
+        }
+        finally
+        {
+            _sendChatSemaphore.Release();
+        }
     }
 }

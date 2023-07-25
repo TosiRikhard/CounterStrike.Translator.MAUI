@@ -8,6 +8,7 @@
 @inject NavigationManager NavigationManager
 @inject TelnetService TelnetService
 @inject TranslatingService TranslatingService
+@inject TelnetConnection TelnetConnection
 
 <div class="container-fluid">
     <div class="row">
@@ -80,56 +81,103 @@
     private Dictionary<Guid, Translation> _translatedMessages = new();
 
 
-    //protected override async Task OnInitializedAsync()
-    //{
-    //    _appSettings = AppSettingsAndStateService.GetSettings();
-
-    //    if (_appSettings.IsFirstRun || _appSettings.ShowUserConfiguratorAtStartup && !AppSettingsAndStateService.UserConfiguratorShown)
-    //    {
-    //        // Update first run flag to false
-    //        await SaveFirstRun(_appSettings);
-
-    //        // Navigate to SteamProfiles page
-    //        NavigationManager.NavigateTo("/steamprofiles");
-    //    }
-
-    //    TelnetService.TelnetConnection.MessageReceived += async (message) => await OnMessageReceived(message);
-
-    //}
-
     protected override async Task OnInitializedAsync()
     {
         _appSettings = AppSettingsAndStateService.GetSettings();
+
+        if (_appSettings.IsFirstRun || _appSettings.ShowUserConfiguratorAtStartup && !AppSettingsAndStateService.UserConfiguratorShown)
+        {
+            // Update first run flag to false
+            await SaveFirstRun(_appSettings);
+
+            // Navigate to SteamProfiles page
+            NavigationManager.NavigateTo("/steamprofiles");
+        }
+
         TelnetService.TelnetConnection.MessageReceived += async (message) => await OnMessageReceived(message);
+
     }
+
 
     private async Task OnMessageReceived(string message)
     {
         try
         {
             if (string.IsNullOrEmpty(message)) return;
+
+            // if the message is 2 or less characters, no need to translate it
             if (message.Length <= 2) return;
+
+            // If message does not contain " : ", it's not a chat message
             if (!message.Contains(" : ")) return;
 
+            // Else get the name of the sender
             var senderName = message.Split(" : ")[0];
+
+            var pattern = @"\*\s*(.*?)\s*\*"; // Pattern to match anything inside asterisks
+            var isTeamChat = false;
+
+            var match = Regex.Match(senderName, pattern);
+
+            // If match is successful, check if it contains "CT" or "Terrorist"
+            if (match.Success)
+            {
+                var capturedText = match.Groups[1].Value;
+                if (capturedText.Contains("Counter-Terrorist") || capturedText.Contains("(Terrorist)"))
+                {
+                    isTeamChat = true;
+                }
+            }
+
+            // If translate teamchat is true and isTeamChat is true return
+            if(_appSettings.TranslatingOptions.TranslateOnlyEnemyTeam && isTeamChat) return;
+
+            // Remove anything between * * characters from the name
+            senderName = Regex.Replace(senderName, pattern, " ");
             senderName = senderName.Replace("Tried to look up command say as if it were a variable.\r\n", string.Empty);
             senderName = senderName.Replace("Tried to look up command say_team as if it were a variable.\r\n", string.Empty);
+
+            // Remove " @ ANY TEXT HERE" that comes after the first (When you dead you set the location...
+            string pattern2 = @"\s*@.*$";
+            senderName = Regex.Replace(senderName, pattern2, "");
+
+            senderName = senderName.Replace("(Terrorist) ", string.Empty);
+            senderName = senderName.Replace("(Counter-Terrorist) ", string.Empty);
+
+            // remove last empty char that telnet brings
             senderName = Regex.Replace(senderName, @"[^\u0020-\u007E]", string.Empty);
 
+
+
+            // If sender name is on the ignore list then return
+            var test1 = senderName.Length;
+            var test2 = _appSettings.TranslatingOptions.OwnProfileName.Length;
+            if (_appSettings.TranslatingOptions.IgnoreOwnMessages && string.Equals(_appSettings.TranslatingOptions.OwnProfileName, senderName, StringComparison.OrdinalIgnoreCase)) return;
+
+            // Get the message
             message = message.Split(" : ")[1];
+
             var messageTranslated = await TranslatingService.TranslateMessage(message);
+            // If the language is ignored, don't add it to the list
+            if (_appSettings.TranslatingOptions.IgnoreLanguages.Contains(messageTranslated.TranslateFrom)) return;
+            if (string.IsNullOrEmpty(messageTranslated.TranslatedText)) return;
 
-            await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
+            if (_appSettings.TranslatingOptions.SendTranslationToTeamChat)
+            {
+                await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
+            }
 
-            await InvokeAsync(() =>
+            InvokeAsync(() =>
             {
                 messageTranslated.UserName = senderName;
                 _translatedMessages.Add(Guid.NewGuid(), messageTranslated);
+
+                // If the list is longer than 10, remove the first item
                 if (_translatedMessages.Count > 20)
                 {
                     _translatedMessages.Remove(_translatedMessages.First().Key);
                 }
-                StateHasChanged();
+                StateHasChanged();  // Update the UI on the main thread
             });
 
         }
@@ -138,94 +186,6 @@
             await Application.Current!.MainPage!.DisplayAlert("Error in translation", ex.Message, "OK");
         }
     }
-
-    //private async Task OnMessageReceived(string message)
-    //{
-    //    try
-    //    {
-    //        if (string.IsNullOrEmpty(message)) return;
-
-    //        // if the message is 2 or less characters, no need to translate it
-    //        if (message.Length <= 2) return;
-
-    //        // If message does not contain " : ", it's not a chat message
-    //        if (!message.Contains(" : ")) return;
-
-    //        // Else get the name of the sender
-    //        var senderName = message.Split(" : ")[0];
-
-    //        var pattern = @"\*\s*(.*?)\s*\*"; // Pattern to match anything inside asterisks
-    //        var isTeamChat = false;
-
-    //        var match = Regex.Match(senderName, pattern);
-
-    //        // If match is successful, check if it contains "CT" or "Terrorist"
-    //        if (match.Success)
-    //        {
-    //            var capturedText = match.Groups[1].Value;
-    //            if (capturedText.Contains("Counter-Terrorist") || capturedText.Contains("(Terrorist)"))
-    //            {
-    //                isTeamChat = true;
-    //            }
-    //        }
-
-    //        // If translate teamchat is true and isTeamChat is true return
-    //        if(_appSettings.TranslatingOptions.TranslateOnlyEnemyTeam && isTeamChat) return;
-
-    //        // Remove anything between * * characters from the name
-    //        senderName = Regex.Replace(senderName, pattern, " ");
-    //        senderName = senderName.Replace("Tried to look up command say as if it were a variable.\r\n", string.Empty);
-    //        senderName = senderName.Replace("Tried to look up command say_team as if it were a variable.\r\n", string.Empty);
-
-    //        // Remove " @ ANY TEXT HERE" that comes after the first (When you dead you set the location...
-    //        string pattern2 = @"\s*@.*$";
-    //        senderName = Regex.Replace(senderName, pattern2, "");
-
-    //        senderName = senderName.Replace("(Terrorist) ", string.Empty);
-    //        senderName = senderName.Replace("(Counter-Terrorist) ", string.Empty);
-
-    //        // remove last empty char that telnet brings
-    //        senderName = Regex.Replace(senderName, @"[^\u0020-\u007E]", string.Empty);
-
-
-
-    //        // If sender name is on the ignore list then return
-    //        var test1 = senderName.Length;
-    //        var test2 = _appSettings.TranslatingOptions.OwnProfileName.Length;
-    //        if (_appSettings.TranslatingOptions.IgnoreOwnMessages && string.Equals(_appSettings.TranslatingOptions.OwnProfileName, senderName, StringComparison.OrdinalIgnoreCase)) return;
-
-    //        // Get the message
-    //        message = message.Split(" : ")[1];
-
-    //        var messageTranslated = await TranslatingService.TranslateMessage(message);
-    //        // If the language is ignored, don't add it to the list
-    //        if (_appSettings.TranslatingOptions.IgnoreLanguages.Contains(messageTranslated.TranslateFrom)) return;
-    //        if (string.IsNullOrEmpty(messageTranslated.TranslatedText)) return;
-
-    //        if (_appSettings.TranslatingOptions.SendTranslationToTeamChat)
-    //        {
-    //            await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
-    //        }
-
-    //        InvokeAsync(() =>
-    //        {
-    //            messageTranslated.UserName = senderName;
-    //            _translatedMessages.Add(Guid.NewGuid(), messageTranslated);
-
-    //            // If the list is longer than 10, remove the first item
-    //            if (_translatedMessages.Count > 20)
-    //            {
-    //                _translatedMessages.Remove(_translatedMessages.First().Key);
-    //            }
-    //            StateHasChanged();  // Update the UI on the main thread
-    //        });
-
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        await Application.Current!.MainPage!.DisplayAlert("Error in translation", ex.Message, "OK");
-    //    }
-    //}
 
     private async Task SaveFirstRun(AppSettings settings)
     {
