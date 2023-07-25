@@ -5,71 +5,111 @@
 @inject SteamUserService SteamUserService
 @inject AppSettingsAndStateService AppSettingsAndStateService
 
-
-
-<h1>Steam User Translating Options</h1>
-<p>This interface enables you to add necessary options to Steam's launch options to enable or disable translating. All existing launch options will remain unaffected. This process is safe and will not result in any bans.</p>
-
 @if (SteamUserService.SteamUsers == null)
 {
-    <div class="d-flex justify-content-left">
-        <div class="spinner-border text-danger" role="status">
-        </div>
-        <br/>
+    <div class="d-flex justify-content-center">
+        <div class="spinner-border text-danger" role="status"></div>
+        <p class="ml-2">Loading Users...</p>
     </div>
-    <p>Loading Users...</p>
 }
 else
 {
-    <button class="btn btn-primary" @onclick="SteamUserService.RefreshSteamUsers">Check profile status</button>
-    <input id="ShowCheckBox" type="checkbox" checked="@_appSettings.ShowUserConfiguratorAtStartup" @oninput="CheckboxChanged">
-    <label for="ShowCheckBox">Show this screen at startup</label>
-    <div class="d-flex flex-wrap justify-content-start">
-        @foreach (var steamUser in SteamUserService.SteamUsers)
+    <div class="container-fluid">
+
+    <div class="row">
+        @if (showProfiles)
         {
-            <div class="d-flex flex-column align-items-center p-3 m-3 border border-dark" style="width:200px;">
-                <div style="position:relative; width:153px; height:150px;">
-                    <img src="@steamUser.AvatarUrl" style="position:absolute; left:13px; top:13px; width:126px; height:126px;"/>
-                    @if (!string.IsNullOrEmpty(steamUser.AvatarFrameUrl))
+            <div class="col-md-8">
+
+                <div class="d-flex flex-wrap justify-content-start">
+                    @foreach (var steamUser in SteamUserService.SteamUsers)
                     {
-                        <img src="@steamUser.AvatarFrameUrl" style="position:absolute; left:0; top:0; width:155px; height:155px;"/>
+                        <div class="d-flex flex-column align-items-center p-3 m-3 border border-dark" style="width:200px;">
+                            <div style="position:relative; width:153px; height:150px;">
+                                <img src="@steamUser.AvatarUrl" style="position:absolute; left:13px; top:13px; width:126px; height:126px;" />
+                                @if (!string.IsNullOrEmpty(steamUser.AvatarFrameUrl))
+                                {
+                                    <img src="@steamUser.AvatarFrameUrl" style="position:absolute; left:0; top:0; width:155px; height:155px;" />
+                                }
+                            </div>
+                            <p class="mt-2 mb-2">@steamUser.ProfileName</p>
+
+                            @if (steamUser.TranslatingEnabled)
+                            {
+                                <div class="alert alert-success">
+                                    <span>Translating Enabled</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-danger">
+                                    <span>Translating Disabled</span>
+                                </div>
+                            }
+
+                        </div>
                     }
                 </div>
-                <p class="mt-2 mb-2">@steamUser.ProfileName</p>
 
-                @if (steamUser.TranslatingEnabled)
-                {
-                    <div class="alert alert-success">
-                        <span>Translating Enabled</span>
-                    </div>
-                }
-                else
-                {
-                    <div class="alert alert-danger">
-                        <span>Translating Disabled</span>
-                    </div>
-                }
 
             </div>
+
+            <div class="col-md-4">
+                <!-- Paragraph and button go here -->
+                <div class="mb-4">
+                    <button class="btn btn-primary" @onclick="SteamUserService.RefreshSteamUsers">Update profile status</button>
+                </div>
+
+                <div class="custom-control custom-checkbox mb-4">
+                    <input id="ShowCheckBox" type="checkbox" class="custom-control-input" checked="@_appSettings.ShowUserConfiguratorAtStartup" @oninput="CheckboxChanged">
+                    <label class="custom-control-label" for="ShowCheckBox">Show this screen at startup</label>
+                </div>
+                <button class="btn btn-success" @onclick="ShowTutorial">Show me how to enable translating</button>
+            </div>
+        }
+
+        @if (showTutorial)
+        {
+            <div>
+                <button class="btn btn-danger" @onclick="HideTutorial">Hide tutorial</button>
+                <div class="d-flex flex-column align-items-start">
+                    1. Right click on Counter-Strike: Global Offensive in your Steam library and select Properties
+                    <img src="images/tut1.png" class="img-fluid" style="max-width: 90%; max-height: 80vh;"/>
+                    <br/>
+                    2. Go to General tab and click on Set Launch Options, then add -netconport 2121 and click OK
+                    <img src="images/tut2.png" class="img-fluid" style="max-width: 90%; max-height: 50vh;"/>
+                </div>
+            </div>
+
         }
     </div>
+    </div>
 
-    <p>You can enable translating by adding the launch options in steam for CS -netconport 2121</p>
-    <img src="images/tut1.png" style="width:250px; height:auto;"/>
-    <img src="images/tut2.png" style="width:300px; height:auto;" />
 }
-
-
-
 
 @code {
 
     private AppSettings _appSettings;
 
+    private bool showProfiles = true;
+    private bool showTutorial = false;
+
+    private void ShowTutorial()
+    {
+        showProfiles = false;
+        showTutorial = true;
+    }
+
+    private void HideTutorial()
+    {
+        showProfiles = true;
+        showTutorial = false;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         _appSettings = AppSettingsAndStateService.GetSettings();
-    // While SteamUsers is null, refresh UI until it's not null
+        // While SteamUsers is null, refresh UI until it's not null
         while (SteamUserService.SteamUsers == null)
         {
             await Task.Delay(100);

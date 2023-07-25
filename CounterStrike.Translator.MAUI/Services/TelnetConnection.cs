@@ -1,8 +1,6 @@
 ﻿using System.Net.Sockets;
 using System.Text;
 
-namespace CounterStrike.Translator.MAUI.Services;
-
 public class TelnetConnection
 {
     private const string _hostname = "localhost";
@@ -21,7 +19,7 @@ public class TelnetConnection
         {
             _tcpSocket = new TcpClient(_hostname, _port);
             // Starting the ReadLoopAsync on a separate Task for non-blocking asynchronous operation.
-            Task.Run(ReadLoopAsync);
+            Task.Factory.StartNew(ReadLoopAsync, TaskCreationOptions.LongRunning);
         }
         catch (Exception ex)
         {
@@ -188,4 +186,3 @@ public class TelnetConnection
     {
         Sga = 3
     }
-}

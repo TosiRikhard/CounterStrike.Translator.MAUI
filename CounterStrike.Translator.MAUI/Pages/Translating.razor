@@ -2,48 +2,230 @@
 @using Microsoft.Extensions.Configuration
 @using CounterStrike.Translator.MAUI.Models
 @using CounterStrike.Translator.MAUI.Services
+@using System.Text.RegularExpressions
 @inject IConfiguration Configuration
 @inject AppSettingsAndStateService AppSettingsAndStateService
 @inject NavigationManager NavigationManager
 @inject TelnetService TelnetService
+@inject TranslatingService TranslatingService
 
-<h1>Hello, world!</h1>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-8">
+            @foreach (var message in _translatedMessages)
+            {
+                <div class="d-grid grid-template-columns">
+                    <div class="text-truncate" style="max-width: 100px;">
+                        @((message.Value.UserName.Length > 10) ? message.Value.UserName[..10] + "..." : message.Value.UserName)
+                    </div>
+                    <div>
+                        @message.Value.TranslatedText
+                    </div>
+                </div>
+            }
+        </div>
 
-Welcome to your new app.
-<p>@_lastMessage</p>
-<button class="btn btn-primary" @onclick="SendCommand">Send</button>
+        @if (_appSettings is not null)
+        {
+            <div class="col-4" style="border: 2px solid #108BEA; padding: 10px;">
+                <div class="form-group">
+                    <label>Ignore Own Messages</label>
+                    <input type="checkbox" @bind="_appSettings.TranslatingOptions.IgnoreOwnMessages">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>Own Profile Name (needed to ignore own messages)</label>
+                    <InputText class="form-control" @bind-Value="_appSettings.TranslatingOptions.OwnProfileName" />
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>Translate Only Enemy Team</label>
+                    <input type="checkbox" @bind="_appSettings.TranslatingOptions.TranslateOnlyEnemyTeam">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>Send Translation to team chat</label>
+                    <input type="checkbox" @bind="_appSettings.TranslatingOptions.SendTranslationToTeamChat">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>Language To Translate To</label>
+                    <InputText class="form-control" @bind-Value="_appSettings.TranslatingOptions.LanguageToTranslateTo" />
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>Ignore Languages (separate by comma)</label>
+                    <InputTextArea class="form-control" @bind-Value="IgnoreLanguagesText" />
+                </div>
 
 
+
+                <button class="btn btn-primary mb-3" @onclick="SaveSettings">Save Changes</button>
+
+                <div>
+                    <label style="border: 2px solid #FFA500; padding: 10px;">TelnetConnection: Enabled</label>
+                    <label style="border: 2px solid #FFA500; padding: 10px;">Current Translating Engine: Google</label>
+                    <label style="border: 2px solid #FFA500; padding: 10px;">Engine Api limit: 44/100</label>
+                </div>
+
+            </div>
+        }
+
+
+    </div>
+</div>
 @code {
 
-    private string _lastMessage = "";
+    private AppSettings _appSettings;
+    private Dictionary<Guid, Translation> _translatedMessages = new();
+
+
+    //protected override async Task OnInitializedAsync()
+    //{
+    //    _appSettings = AppSettingsAndStateService.GetSettings();
+
+    //    if (_appSettings.IsFirstRun || _appSettings.ShowUserConfiguratorAtStartup && !AppSettingsAndStateService.UserConfiguratorShown)
+    //    {
+    //        // Update first run flag to false
+    //        await SaveFirstRun(_appSettings);
+
+    //        // Navigate to SteamProfiles page
+    //        NavigationManager.NavigateTo("/steamprofiles");
+    //    }
+
+    //    TelnetService.TelnetConnection.MessageReceived += async (message) => await OnMessageReceived(message);
+
+    //}
 
     protected override async Task OnInitializedAsync()
     {
-        var appSettings = AppSettingsAndStateService.GetSettings();
-
-        if (appSettings.IsFirstRun || appSettings.ShowUserConfiguratorAtStartup && !AppSettingsAndStateService.UserConfiguratorShown)
-        {
-    // Update first run flag to false
-            await SaveFirstRun(appSettings);
-
-    // Navigate to SteamProfiles page
-            NavigationManager.NavigateTo("/steamprofiles");
-        }
-
-        TelnetService.TelnetConnection.MessageReceived += OnMessageReceived;
-
+        _appSettings = AppSettingsAndStateService.GetSettings();
+        TelnetService.TelnetConnection.MessageReceived += async (message) => await OnMessageReceived(message);
     }
 
-    private void OnMessageReceived(string message)
+    private async Task OnMessageReceived(string message)
     {
-        if(message == string.Empty)
+        try
         {
-            return;
+            if (string.IsNullOrEmpty(message)) return;
+            if (message.Length <= 2) return;
+            if (!message.Contains(" : ")) return;
+
+            var senderName = message.Split(" : ")[0];
+            senderName = senderName.Replace("Tried to look up command say as if it were a variable.\r\n", string.Empty);
+            senderName = senderName.Replace("Tried to look up command say_team as if it were a variable.\r\n", string.Empty);
+            senderName = Regex.Replace(senderName, @"[^\u0020-\u007E]", string.Empty);
+
+            message = message.Split(" : ")[1];
+            var messageTranslated = await TranslatingService.TranslateMessage(message);
+
+            await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
+
+            await InvokeAsync(() =>
+            {
+                messageTranslated.UserName = senderName;
+                _translatedMessages.Add(Guid.NewGuid(), messageTranslated);
+                if (_translatedMessages.Count > 20)
+                {
+                    _translatedMessages.Remove(_translatedMessages.First().Key);
+                }
+                StateHasChanged();
+            });
+
         }
-        _lastMessage = message;
-        InvokeAsync(StateHasChanged);  // Update the UI on the main thread
+        catch (Exception ex)
+        {
+            await Application.Current!.MainPage!.DisplayAlert("Error in translation", ex.Message, "OK");
+        }
     }
+
+    //private async Task OnMessageReceived(string message)
+    //{
+    //    try
+    //    {
+    //        if (string.IsNullOrEmpty(message)) return;
+
+    //        // if the message is 2 or less characters, no need to translate it
+    //        if (message.Length <= 2) return;
+
+    //        // If message does not contain " : ", it's not a chat message
+    //        if (!message.Contains(" : ")) return;
+
+    //        // Else get the name of the sender
+    //        var senderName = message.Split(" : ")[0];
+
+    //        var pattern = @"\*\s*(.*?)\s*\*"; // Pattern to match anything inside asterisks
+    //        var isTeamChat = false;
+
+    //        var match = Regex.Match(senderName, pattern);
+
+    //        // If match is successful, check if it contains "CT" or "Terrorist"
+    //        if (match.Success)
+    //        {
+    //            var capturedText = match.Groups[1].Value;
+    //            if (capturedText.Contains("Counter-Terrorist") || capturedText.Contains("(Terrorist)"))
+    //            {
+    //                isTeamChat = true;
+    //            }
+    //        }
+
+    //        // If translate teamchat is true and isTeamChat is true return
+    //        if(_appSettings.TranslatingOptions.TranslateOnlyEnemyTeam && isTeamChat) return;
+
+    //        // Remove anything between * * characters from the name
+    //        senderName = Regex.Replace(senderName, pattern, " ");
+    //        senderName = senderName.Replace("Tried to look up command say as if it were a variable.\r\n", string.Empty);
+    //        senderName = senderName.Replace("Tried to look up command say_team as if it were a variable.\r\n", string.Empty);
+
+    //        // Remove " @ ANY TEXT HERE" that comes after the first (When you dead you set the location...
+    //        string pattern2 = @"\s*@.*$";
+    //        senderName = Regex.Replace(senderName, pattern2, "");
+
+    //        senderName = senderName.Replace("(Terrorist) ", string.Empty);
+    //        senderName = senderName.Replace("(Counter-Terrorist) ", string.Empty);
+
+    //        // remove last empty char that telnet brings
+    //        senderName = Regex.Replace(senderName, @"[^\u0020-\u007E]", string.Empty);
+
+
+
+    //        // If sender name is on the ignore list then return
+    //        var test1 = senderName.Length;
+    //        var test2 = _appSettings.TranslatingOptions.OwnProfileName.Length;
+    //        if (_appSettings.TranslatingOptions.IgnoreOwnMessages && string.Equals(_appSettings.TranslatingOptions.OwnProfileName, senderName, StringComparison.OrdinalIgnoreCase)) return;
+
+    //        // Get the message
+    //        message = message.Split(" : ")[1];
+
+    //        var messageTranslated = await TranslatingService.TranslateMessage(message);
+    //        // If the language is ignored, don't add it to the list
+    //        if (_appSettings.TranslatingOptions.IgnoreLanguages.Contains(messageTranslated.TranslateFrom)) return;
+    //        if (string.IsNullOrEmpty(messageTranslated.TranslatedText)) return;
+
+    //        if (_appSettings.TranslatingOptions.SendTranslationToTeamChat)
+    //        {
+    //            await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
+    //        }
+
+    //        InvokeAsync(() =>
+    //        {
+    //            messageTranslated.UserName = senderName;
+    //            _translatedMessages.Add(Guid.NewGuid(), messageTranslated);
+
+    //            // If the list is longer than 10, remove the first item
+    //            if (_translatedMessages.Count > 20)
+    //            {
+    //                _translatedMessages.Remove(_translatedMessages.First().Key);
+    //            }
+    //            StateHasChanged();  // Update the UI on the main thread
+    //        });
+
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        await Application.Current!.MainPage!.DisplayAlert("Error in translation", ex.Message, "OK");
+    //    }
+    //}
 
     private async Task SaveFirstRun(AppSettings settings)
     {
@@ -55,5 +237,47 @@ Welcome to your new app.
     private async Task SendCommand()
     {
         await TelnetService.SendInChat(TelnetService.ChatType.All, "TÄMÄ OLISI KÄÄNNETTY");
+    }
+
+    private async Task SaveSettings()
+    {
+        // Trim values
+        _appSettings.TranslatingOptions.OwnProfileName = _appSettings.TranslatingOptions.OwnProfileName.Trim();
+        
+        // If language translate to is null or empty, add default value of English
+        if (string.IsNullOrEmpty(_appSettings.TranslatingOptions.LanguageToTranslateTo))
+        {
+            _appSettings.TranslatingOptions.LanguageToTranslateTo = "en";
+        }
+        
+        _appSettings.TranslatingOptions.LanguageToTranslateTo = _appSettings.TranslatingOptions.LanguageToTranslateTo.Trim();
+
+        // if Ignorlanguages is empty, add the LanguageTranslateTo to the list
+    if (_appSettings.TranslatingOptions.IgnoreLanguages is null || _appSettings.TranslatingOptions.IgnoreLanguages.Count == 0)
+        {
+            _appSettings.TranslatingOptions.IgnoreLanguages = new List<string> { _appSettings.TranslatingOptions.LanguageToTranslateTo };
+        }
+
+
+        _appSettings.TranslatingOptions.IgnoreLanguages = _appSettings.TranslatingOptions.IgnoreLanguages.Select(s => s.Trim()).ToList();
+
+        
+
+        await AppSettingsAndStateService.SaveSettings(_appSettings);
+    }
+
+    private string IgnoreLanguagesText
+    {
+        get
+        {
+            if (_appSettings.TranslatingOptions.IgnoreLanguages is null || _appSettings.TranslatingOptions.IgnoreLanguages.Count == 0) return string.Empty;
+            return string.Join(", ", _appSettings.TranslatingOptions.IgnoreLanguages);
+        }
+        set
+        {
+            _appSettings.TranslatingOptions.IgnoreLanguages = value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .ToList();
+        }
     }
 }

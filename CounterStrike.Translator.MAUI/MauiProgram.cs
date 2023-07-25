@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using CounterStrike.Translator.MAUI.Services;
 using Microsoft.Extensions.Configuration;
+using CounterStrike.Translator.MAUI.Services.Translators;
 
 namespace CounterStrike.Translator.MAUI;
 
@@ -46,6 +47,16 @@ public static class MauiProgram
         builder.Services.AddSingleton<SteamUserService>();
         builder.Services.AddSingleton<TelnetConnection>();
         builder.Services.AddSingleton<TelnetService>();
+        builder.Services.AddSingleton<TranslatingService>();
+        builder.Services.AddSingleton<ITranslator, GoogleTranslator>();
+        builder.Services.AddSingleton<ITranslator, LibreTranslator>();
+
+        builder.Services.AddSingleton(sp =>
+        {
+            var translators = sp.GetServices<ITranslator>();
+            return new TranslationManager(translators);
+        });
+
 
 
         return builder.Build();

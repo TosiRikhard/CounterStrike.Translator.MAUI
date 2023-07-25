@@ -2,6 +2,8 @@
 
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background-color: #1c1b1d;
+    color: #ddd; /* light gray text on dark gray background */
 }
 
 h1:focus {
@@ -65,6 +67,15 @@ a, .btn-link {
 
 .status-bar-safe-area {
     display: none;
+}
+
+.d-grid {
+    display: grid;
+    gap: 10px; /* Adjust this value to increase or decrease the space */
+}
+
+.grid-template-columns {
+    grid-template-columns: max-content auto;
 }
 
 @supports (-webkit-touch-callout: none) {

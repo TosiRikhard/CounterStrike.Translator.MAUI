@@ -6,5 +6,8 @@ namespace CounterStrike.Translator.MAUI.Models
     {
         public bool IsFirstRun { get; set; }
         public bool ShowUserConfiguratorAtStartup { get; set; }
+        public TranslatingOptions TranslatingOptions { get; set; }
     }
+
+
 }
