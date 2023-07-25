@@ -9,9 +9,18 @@ public class GoogleTranslator : ITranslator
 {
     private static readonly string url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={1}&dt=t&q={0}";
     private static readonly HttpClient client = new HttpClient();
+    private readonly AppSettingsAndStateService _appSettingsAndStateService;
+
+    public GoogleTranslator(AppSettingsAndStateService appSettingsAndStateService)
+    {
+        _appSettingsAndStateService = appSettingsAndStateService;
+        _appSettingsAndStateService.CurrentApiMaxCalls = 100;
+
+    }
 
     public async Task<Translation> TranslateAsync(string sourceText, string lang)
     {
+
         var fullUrl = EncodeUrl(url, sourceText, lang);
 
         try

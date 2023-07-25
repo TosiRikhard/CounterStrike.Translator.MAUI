@@ -13,13 +13,35 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-8">
+            <!-- Headers -->
+            <div class="row">
+                <div class="col-2 text-truncate" style="max-width: 100px; font-weight: bold;">
+                    Sender
+                </div>
+                <div class="col-1" style="font-weight: bold;">
+                    From
+                </div>
+                <div class="col-1" style="font-weight: bold;">
+                    To
+                </div>
+                <div class="col" style="font-weight: bold;">
+                    Message
+                </div>
+            </div>
+            <!-- Content -->
             @foreach (var message in _translatedMessages)
             {
-                <div class="d-grid grid-template-columns">
-                    <div class="text-truncate" style="max-width: 100px;">
+                <div class="row">
+                    <div class="col-2 text-truncate text-success" style="max-width: 100px;">
                         @((message.Value.UserName.Length > 10) ? message.Value.UserName[..10] + "..." : message.Value.UserName)
                     </div>
-                    <div>
+                    <div class="col-1 text-info">
+                        @message.Value.TranslateFrom
+                    </div>
+                    <div class="col-1 text-warning">
+                        @message.Value.TranslatedTo
+                    </div>
+                    <div class="col">
                         @message.Value.TranslatedText
                     </div>
                 </div>
@@ -30,33 +52,31 @@
         {
             <div class="col-4" style="border: 2px solid #108BEA; padding: 10px;">
                 <div class="form-group">
-                    <label>Ignore Own Messages</label>
+                    <InputText class="form-control" @bind-Value="_appSettings.TranslatingOptions.OwnProfileName" />
+                </div>
+                <div class="form-group mb-3">
+                    <label>Don't Translate messages from profile names above</label>
                     <input type="checkbox" @bind="_appSettings.TranslatingOptions.IgnoreOwnMessages">
                 </div>
 
                 <div class="form-group mb-3">
-                    <label>Own Profile Name (needed to ignore own messages)</label>
-                    <InputText class="form-control" @bind-Value="_appSettings.TranslatingOptions.OwnProfileName" />
+                    <label>Only translate all chat</label>
+                    <input type="checkbox" @bind="_appSettings.TranslatingOptions.TranslateOnlyAllChat">
                 </div>
 
                 <div class="form-group mb-3">
-                    <label>Translate Only Enemy Team</label>
-                    <input type="checkbox" @bind="_appSettings.TranslatingOptions.TranslateOnlyEnemyTeam">
-                </div>
-
-                <div class="form-group mb-3">
-                    <label>Send Translation to team chat</label>
+                    <label>Send translations to team chat</label>
                     <input type="checkbox" @bind="_appSettings.TranslatingOptions.SendTranslationToTeamChat">
                 </div>
 
                 <div class="form-group mb-3">
-                    <label>Language To Translate To</label>
-                    <InputText class="form-control" @bind-Value="_appSettings.TranslatingOptions.LanguageToTranslateTo" />
+                    <label>Default translating language</label>
+                    <InputText class="form-control" @bind-Value="_appSettings.TranslatingOptions.LanguageToTranslateTo"/>
                 </div>
 
                 <div class="form-group mb-3">
-                    <label>Ignore Languages (separate by comma)</label>
-                    <InputTextArea class="form-control" @bind-Value="IgnoreLanguagesText" />
+                    <label>Don't translate Languages (separate by comma)</label>
+                    <InputTextArea class="form-control" @bind-Value="IgnoreLanguagesText"/>
                 </div>
 
 
@@ -64,9 +84,10 @@
                 <button class="btn btn-primary mb-3" @onclick="SaveSettings">Save Changes</button>
 
                 <div>
-                    <label style="border: 2px solid #FFA500; padding: 10px;">TelnetConnection: Enabled</label>
-                    <label style="border: 2px solid #FFA500; padding: 10px;">Current Translating Engine: Google</label>
-                    <label style="border: 2px solid #FFA500; padding: 10px;">Engine Api limit: 44/100</label>
+                    <label style="border: 2px solid #FFA500; padding: 10px;">TelnetConnection: @AppSettingsAndStateService.TelnetConnected</label>
+                    <label style="border: 2px solid #FFA500; padding: 10px;">Current Translating Engine: @AppSettingsAndStateService.CurrentTranslationEngine</label>
+                    <label style="border: 2px solid #FFA500; padding: 10px;">Engine Api limit: @AppSettingsAndStateService.CurrentApiCalls/@AppSettingsAndStateService.CurrentApiMaxCalls</label>
+                    <label style="border: 2px solid #FFA500; padding: 10px;">Last Language: @_lastTranslatedLanguage</label>
                 </div>
 
             </div>
@@ -75,11 +96,12 @@
 
     </div>
 </div>
+
 @code {
 
     private AppSettings _appSettings;
     private Dictionary<Guid, Translation> _translatedMessages = new();
-
+    private string _lastTranslatedLanguage = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -96,6 +118,8 @@
 
         TelnetService.TelnetConnection.MessageReceived += async (message) => await OnMessageReceived(message);
 
+    // Subscribe to ConnectionEstablished event
+        TelnetService.TelnetConnection.ConnectionEstablished += () => InvokeAsync(StateHasChanged);
     }
 
 
@@ -113,6 +137,14 @@
 
             // Else get the name of the sender
             var senderName = message.Split(" : ")[0];
+            message = message.Split(" : ")[1].Trim();
+            
+            // If the message is the same as last messages translated to (this comes up if send to chat is active)
+            // then don't translate it again
+            if (_translatedMessages.Count > 0 && message == _translatedMessages.Last().Value.TranslatedText)
+            {
+                return;
+            }
 
             var pattern = @"\*\s*(.*?)\s*\*"; // Pattern to match anything inside asterisks
             var isTeamChat = false;
@@ -129,11 +161,24 @@
                 }
             }
 
-            // If translate teamchat is true and isTeamChat is true return
-            if(_appSettings.TranslatingOptions.TranslateOnlyEnemyTeam && isTeamChat) return;
+            var isTranslateCommand = false || message.Contains("!tr", StringComparison.OrdinalIgnoreCase);
+
+            if((_appSettings.TranslatingOptions.TranslateOnlyAllChat && isTeamChat) && !isTranslateCommand) return;
 
             // Remove anything between * * characters from the name
             senderName = Regex.Replace(senderName, pattern, " ");
+
+            // Check in what chat you typed
+            var chatType = TelnetService.ChatType.None;
+            if (senderName.Contains("Tried to look up command say as if it were a variable"))
+            {
+                chatType = TelnetService.ChatType.All;
+            }
+            else if (senderName.Contains("Tried to look up command say_team as if it were a variable"))
+            {
+                chatType = TelnetService.ChatType.Team;
+            }
+
             senderName = senderName.Replace("Tried to look up command say as if it were a variable.\r\n", string.Empty);
             senderName = senderName.Replace("Tried to look up command say_team as if it were a variable.\r\n", string.Empty);
 
@@ -146,30 +191,69 @@
 
             // remove last empty char that telnet brings
             senderName = Regex.Replace(senderName, @"[^\u0020-\u007E]", string.Empty);
-
-
+            senderName = senderName.Trim();
 
             // If sender name is on the ignore list then return
-            var test1 = senderName.Length;
-            var test2 = _appSettings.TranslatingOptions.OwnProfileName.Length;
-            if (_appSettings.TranslatingOptions.IgnoreOwnMessages && string.Equals(_appSettings.TranslatingOptions.OwnProfileName, senderName, StringComparison.OrdinalIgnoreCase)) return;
+            var isOwnMessage = string.Equals(_appSettings.TranslatingOptions.OwnProfileName, senderName, StringComparison.OrdinalIgnoreCase);
+            if (_appSettings.TranslatingOptions.IgnoreOwnMessages && isOwnMessage) return;
 
             // Get the message
-            message = message.Split(" : ")[1];
 
-            var messageTranslated = await TranslatingService.TranslateMessage(message);
-            // If the language is ignored, don't add it to the list
-            if (_appSettings.TranslatingOptions.IgnoreLanguages.Contains(messageTranslated.TranslateFrom)) return;
-            if (string.IsNullOrEmpty(messageTranslated.TranslatedText)) return;
+            Translation messageTranslated = null;
 
-            if (_appSettings.TranslatingOptions.SendTranslationToTeamChat)
+            if (isTranslateCommand)
             {
-                await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
+                var isTranslateLastCommand = message.StartsWith("!trl", StringComparison.OrdinalIgnoreCase);
+                if (isTranslateLastCommand && string.IsNullOrWhiteSpace(_lastTranslatedLanguage))
+                {
+                    await Application.Current!.MainPage!.DisplayAlert("Error in translation", "No last language detected! use !tr languagecode", "OK");
+                    return;
+                }
+                if (isTranslateLastCommand)
+                {
+                    messageTranslated = await TranslatingService.TranslateMessage(message.Replace("!trl ", string.Empty), _lastTranslatedLanguage);
+                }
+                else
+                {
+                    var languageCode = message.Split(" ")[1];
+                    message = message.Replace("!tr " + languageCode + " ", string.Empty);
+                    message = message.Trim();
+                    messageTranslated = await TranslatingService.TranslateMessage(message, languageCode);
+                }
+
+                if (string.IsNullOrEmpty(messageTranslated.TranslatedText)) return;
+
+                // NOTE HOW DO I WANT TO SEND THE MESSAGE TO CHAT??
+                // SHOULD IT SEND TO THE CHAT WHERE THE COMMAND WAS ISSUED, OR SHOULD I ADD A PARAMETER TO WHAT CHAT TO SEND?
+                // OR SHOULD I SEND TO SAME CHAT, AND IF PARAMETER GIVEN, SEND TO THE CHAT GIVEN?
+                await TelnetService.SendInChat(chatType, messageTranslated.TranslatedText);
+
             }
 
-            InvokeAsync(() =>
+            else
+            {
+                messageTranslated = await TranslatingService.TranslateMessage(message);
+
+                // If the language is ignored, don't add it to the list
+                if (_appSettings.TranslatingOptions.IgnoreLanguages.Contains(messageTranslated.TranslateFrom)) return;
+
+                if (string.IsNullOrEmpty(messageTranslated.TranslatedText)) return;
+
+                if (_appSettings.TranslatingOptions.SendTranslationToTeamChat)
+                {
+                    await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
+                }
+            }
+
+            await InvokeAsync(() =>
             {
                 messageTranslated.UserName = senderName;
+
+                if (!isOwnMessage)
+                {
+                    _lastTranslatedLanguage = messageTranslated.TranslateFrom;
+                }
+
                 _translatedMessages.Add(Guid.NewGuid(), messageTranslated);
 
                 // If the list is longer than 10, remove the first item
@@ -192,11 +276,6 @@
         settings.IsFirstRun = false;
         AppSettingsAndStateService.UserConfiguratorShown = true;
         await AppSettingsAndStateService.SaveSettings(settings);
-    }
-
-    private async Task SendCommand()
-    {
-        await TelnetService.SendInChat(TelnetService.ChatType.All, "TÄMÄ OLISI KÄÄNNETTY");
     }
 
     private async Task SaveSettings()
@@ -240,4 +319,5 @@
                 .ToList();
         }
     }
+
 }

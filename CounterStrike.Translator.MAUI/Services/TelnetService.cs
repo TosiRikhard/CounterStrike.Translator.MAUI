@@ -4,7 +4,8 @@ public class TelnetService
     public enum ChatType
     {
         All,
-        Team
+        Team,
+        None
     }
 
     public readonly TelnetConnection TelnetConnection;
@@ -16,7 +17,7 @@ public class TelnetService
     public TelnetService(TelnetConnection telnetConnection)
     {
         TelnetConnection = telnetConnection;
-        TelnetConnection.Connect();
+        _ = Task.Run(() => TelnetConnection.ConnectAsync());
     }
 
     public async Task<bool> ExecuteCsgoCommand(string command)

@@ -8,6 +8,10 @@ public class AppSettingsAndStateService
 {
     private AppSettings _appSettings;
     public bool UserConfiguratorShown;
+    public string CurrentTranslationEngine = string.Empty;
+    public string TelnetConnected = "Not connected";
+    public int CurrentApiCalls = 0;
+    public int CurrentApiMaxCalls = 0;
 
         public AppSettingsAndStateService(IConfiguration configuration)
         {

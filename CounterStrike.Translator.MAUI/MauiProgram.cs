@@ -50,15 +50,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<TranslatingService>();
         builder.Services.AddSingleton<ITranslator, GoogleTranslator>();
         builder.Services.AddSingleton<ITranslator, LibreTranslator>();
-
-        builder.Services.AddSingleton(sp =>
-        {
-            var translators = sp.GetServices<ITranslator>();
-            return new TranslationManager(translators);
-        });
-
-
-
+        builder.Services.AddSingleton<TranslationManager>();
+        
         return builder.Build();
     }
 }

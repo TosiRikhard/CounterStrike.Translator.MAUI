@@ -8,24 +8,43 @@ public class TelnetConnection
     private const string _hostname = "localhost";
     private const int _port = 2121;
     private TcpClient _tcpSocket;
+    private AppSettingsAndStateService _appSettingsAndStateService;
+
+    public TelnetConnection(AppSettingsAndStateService appSettingsAndStateService)
+    {
+        _appSettingsAndStateService = appSettingsAndStateService;
+    }
 
     public bool Connected => _tcpSocket is { Connected: true };
 
     // Event to notify subscribers when a message is received (Counter strike console receives new line).
     public event Action<string> MessageReceived;
+    public event Action ConnectionEstablished;
 
     // Method to initiate the connection and start the reading loop.
-    public void Connect()
+    public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        try
+        while (!cancellationToken.IsCancellationRequested)
         {
-            _tcpSocket = new TcpClient(_hostname, _port);
-            // Starting the ReadLoopAsync on a separate Task for non-blocking asynchronous operation.
-            Task.Factory.StartNew(ReadLoopAsync, TaskCreationOptions.LongRunning);
-        }
-        catch (Exception ex)
-        {
-            // Log the exception
+            try
+            {
+                _tcpSocket = new TcpClient(_hostname, _port);
+                _appSettingsAndStateService.TelnetConnected = "Connected";
+
+                // Starting the ReadLoopAsync on a separate Task for non-blocking asynchronous operation.
+                _ = Task.Factory.StartNew(ReadLoopAsync, TaskCreationOptions.LongRunning);
+
+                // Notify that connection is established
+                ConnectionEstablished?.Invoke();
+
+                // If we connected successfully, break out of the loop
+                break;
+            }
+            catch (SocketException)
+            {
+                // Wait for 2 seconds before trying again
+                await Task.Delay(2000, cancellationToken);
+            }
         }
     }
 
