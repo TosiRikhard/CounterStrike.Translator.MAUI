@@ -8,9 +8,10 @@ namespace CounterStrike.Translator.MAUI.Models;
 public class TranslatingOptions
 {
     public bool TranslateOnlyAllChat { get; set; }
-    public bool IgnoreOwnMessages { get; set; }
     public List<string> IgnoreLanguages { get; set; }
     public string LanguageToTranslateTo { get; set; }
-    public string OwnProfileName { get; set; }
+    public List<string> IgnoreProfiles { get; set; }
     public bool SendTranslationToTeamChat { get; set; }
+
+    
 }
