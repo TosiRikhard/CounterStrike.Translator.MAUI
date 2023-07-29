@@ -4,6 +4,7 @@
 @using CounterStrike.Translator.MAUI.Services
 @using System.Text.RegularExpressions
 @using CounterStrike.Translator.MAUI.Helpers
+@using System.Collections.Concurrent
 @inject IConfiguration Configuration
 @inject AppSettingsAndStateService AppSettingsAndStateService
 @inject NavigationManager NavigationManager
@@ -34,16 +35,16 @@
             {
                 <div class="row">
                     <div class="col-2 text-truncate text-success" style="max-width: 100px;">
-                        @((message.Value.UserName.Length > 10) ? message.Value.UserName[..10] + "..." : message.Value.UserName)
+                        @((message.UserName.Length > 10) ? message.UserName[..10] + "..." : message.UserName)
                     </div>
                     <div class="col-1 text-info">
-                        @message.Value.TranslatedLanguageCode
+                        @message.TranslatedLanguageCode
                     </div>
                     <div class="col-1 text-warning">
-                        @message.Value.SourceLanguageCode
+                        @message.SourceLanguageCode
                     </div>
                     <div class="col">
-                        @message.Value.TranslatedText
+                        @message.TranslatedText
                     </div>
                 </div>
             }
@@ -98,7 +99,8 @@
 @code {
 
     private AppSettings _appSettings;
-    private Dictionary<Guid, Translation> _translatedMessages = new();
+    private ConcurrentQueue<Translation> _translatedMessages = new();
+    private Translation _lastTranslatedMessage;
     private string _lastTranslatedLanguage = string.Empty;
 
     protected override async Task OnInitializedAsync()
@@ -138,7 +140,7 @@
             if (!messageObject.ValidMessage)
             {
                 // TODO THIS SEEM TO CRASH THREAD
-                await Application.Current!.MainPage!.DisplayAlert("Error in translation", "No valid language code provided", "OK");
+             //   await Application.Current!.MainPage!.DisplayAlert("Error in translation", "No valid language code provided", "OK");
                 return;
             }
 
@@ -194,12 +196,13 @@
                     _lastTranslatedLanguage = messageTranslated.TranslatedLanguageCode;
                 }
 
-                _translatedMessages.Add(Guid.NewGuid(), messageTranslated);
+                _translatedMessages.Enqueue(messageTranslated);
+                _lastTranslatedMessage = messageTranslated;
 
                 // If the list is longer than 10, remove the first item
-                if (_translatedMessages.Count > 20)
+                while (_translatedMessages.Count > 20)
                 {
-                    _translatedMessages.Remove(_translatedMessages.First().Key);
+                    _translatedMessages.TryDequeue(out _);
                 }
                 StateHasChanged();  // Update the UI on the main thread
             });
@@ -207,7 +210,7 @@
         }
         catch (Exception ex)
         {
-            await Application.Current!.MainPage!.DisplayAlert("Error in translation", ex.Message, "OK");
+           // await Application.Current!.MainPage!.DisplayAlert("Error in translation", ex.Message, "OK");
         }
     }
 
@@ -390,11 +393,11 @@
 
         var messageSplit = message.Split(requiredSubstring);
 
-        if (_translatedMessages.Count > 0 && messageSplit[1] == _translatedMessages.Last().Value.TranslatedText)
+        if (_lastTranslatedMessage != null && messageSplit[1] == _lastTranslatedMessage.TranslatedText)
         {
             return null;
         }
-
+        
         return messageSplit;
     }
 
