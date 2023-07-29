@@ -176,7 +176,8 @@
             {
                 if (_appSettings.TranslatingOptions.SendTranslationToTeamChat)
                 {
-                    await TelnetService.SendInChat(TelnetService.ChatType.Team, messageTranslated.TranslatedText);
+                    var shortName = messageObject.Sender.Substring(0, 6) + ": ";
+                    await TelnetService.SendInChat(TelnetService.ChatType.Team, shortName + messageTranslated.TranslatedText);
                 }
             }
             else
